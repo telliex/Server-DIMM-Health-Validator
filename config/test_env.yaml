@@ -1,0 +1,26 @@
+server:
+  serial_number: DEMO-SERVER-001
+  project: DIMM-VALIDATION-DEMO
+  test_stage: SAT
+connection:
+  host_ip: 192.0.2.10
+  host_username: tester
+  bmc_ip: 192.0.2.11
+  bmc_username: admin
+execution:
+  mode: mock
+  mock_scenario: healthy
+  timeout_seconds: 30
+tests:
+  check_dimm_inventory: true
+  check_bmc_sel: true
+  check_bmc_sdr: true
+  check_linux_edac: true
+  check_kernel_logs: true
+thresholds:
+  max_corrected_errors: 0
+  max_uncorrected_errors: 0
+  expected_slots: [DIMM_A1, DIMM_A2, DIMM_B1, DIMM_B2]
+report:
+  output_directory: ../reports
+  format: json

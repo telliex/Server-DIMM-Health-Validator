@@ -1,0 +1,4 @@
+{
+  "stdout": "Handle 0x000, DMI type 17\nMemory Device\n\tSize: 32 GB\n\tLocator: DIMM_A1\n\tManufacturer: Fictional Memory Co\n\tPart Number: DEMO-32G-ECC\n\tSerial Number: FAKE-0000\n\tSpeed: 3200 MT/s\n\nHandle 0x001, DMI type 17\nMemory Device\n\tSize: 32 GB\n\tLocator: DIMM_A2\n\tManufacturer: Fictional Memory Co\n\tPart Number: DEMO-32G-ECC\n\tSerial Number: FAKE-0001\n\tSpeed: 3200 MT/s\n\nHandle 0x002, DMI type 17\nMemory Device\n\tSize: 32 GB\n\tLocator: DIMM_B1\n\tManufacturer: Fictional Memory Co\n\tPart Number: DEMO-32G-ECC\n\tSerial Number: FAKE-0002\n\tSpeed: 3200 MT/s\n\nHandle 0x003, DMI type 17\nMemory Device\n\tSize: 32 GB\n\tLocator: DIMM_B2\n\tManufacturer: Fictional Memory Co\n\tPart Number: DEMO-32G-ECC\n\tSerial Number: FAKE-0003\n\tSpeed: 3200 MT/s\n\n",
+  "returncode": 0
+}

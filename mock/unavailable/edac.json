@@ -1,0 +1,6 @@
+{
+  "stdout": "",
+  "stderr": "EDAC not supported on fictional platform",
+  "returncode": 4,
+  "error": "EDAC monitoring unavailable"
+}
