@@ -55,7 +55,9 @@ def validate(config, connection):
         if edac[field] > config["thresholds"][threshold]:
             failures.append(f"EDAC {field}: {edac[field]} exceeds {config['thresholds'][threshold]} (controller scope)")
     for sensor in sensors:
-        if sensor["status"] != "ok":
+        if sensor["unambiguous_failure"] and config["thresholds"].get("fail_on_explicit_dimm_sensor", False):
+            failures.append(f"Explicit DIMM failure sensor: {sensor['name']}")
+        elif sensor["status"] != "ok":
             warnings.append(f"Sensor {sensor['name']}: {sensor['status']}; physical fault not established")
     if not sensors and "sdr" in raw and raw["sdr"].ok:
         warnings.append("BMC exposes no recognized memory sensors; per-DIMM health unavailable")

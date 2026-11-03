@@ -80,3 +80,10 @@ def test_disabled_essential(cfg):
 @pytest.mark.parametrize("text", ["Memory Device\n Size: 32 GB\n Locator: DIMM_A1\nMemory Device\n Size: 32 GB\n Locator: DIMM_A1", " Memory Device\n Size: Unknown\n Locator: DIMM_A1"])
 def test_untrustworthy_inventory(cfg,text):
     assert validate(cfg,Altered("inventory",text))["overall_result"] == "UNKNOWN"
+
+def test_explicit_sensor_policy(cfg):
+    adapter=Altered("sdr","DIMM_A1 | cr | DIMM failure asserted")
+    assert validate(cfg,adapter)["overall_result"] == "WARNING"
+    cfg["thresholds"]["fail_on_explicit_dimm_sensor"] = True
+    assert validate(cfg,adapter)["overall_result"] == "FAIL"
+    assert validate(cfg,Altered("sdr","DIMM_A1 | cr | temperature high"))["overall_result"] == "WARNING"

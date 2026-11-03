@@ -1,0 +1,5 @@
+1 | 01/05/2026 | 10:05:00 | Memory | Correctable ECC | Asserted
+2 | 01/05/2026 | 10:06:00 | Memory | Uncorrectable ECC | Deasserted
+3 | 01/05/2026 | 10:07:00 | DIMM_A1 | Memory training failure | Asserted
+4 | 01/05/2026 | 10:08:00 | Memory | Configuration error | Asserted
+5 | 01/05/2026 | 10:09:00 | DIMM_A2 | DIMM disabled | Asserted

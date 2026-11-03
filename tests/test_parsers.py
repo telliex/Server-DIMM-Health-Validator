@@ -55,3 +55,17 @@ def test_inventory_real_style_boundaries():
 def test_truncated_inventory(text):
     row=parse_inventory(text)[0]
     assert row["present"] is None
+
+def test_event_context_and_types():
+    events=parse_sel((Path(__file__).parent/"fixtures/events.txt").read_text())
+    assert [e["event_type"] for e in events] == ["ecc","ecc","training_failure","configuration_error","dimm_disabled"]
+    assert events[1]["assertion"] == "deasserted"
+    assert all(e["physical_slot"] == "unknown" for e in events)
+
+@pytest.mark.parametrize("line", ["Memory: no ECC errors", "EDAC: 0 corrected errors", "CPU thermal failure", "Memory controller initialized", "disk I/O error"])
+def test_event_false_positives(line):
+    assert parse_kernel(line) == []
+
+@pytest.mark.parametrize("line,explicit", [("DIMM_A1 | cr | DIMM failure asserted",True),("DIMM_A1 | cr | temperature high",False),("DIMM_A1 | cr | DIMM failure deasserted",False),("DIMM_A1 | ns",False)])
+def test_sensor_semantics(line,explicit):
+    assert parse_sdr(line)[0]["unambiguous_failure"] is explicit

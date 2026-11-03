@@ -18,6 +18,7 @@ tests:
   check_linux_edac: true
   check_kernel_logs: true
 thresholds:
+  fail_on_explicit_dimm_sensor: false
   max_corrected_errors: 0
   max_uncorrected_errors: 0
   expected_slots: [DIMM_A1, DIMM_A2, DIMM_B1, DIMM_B2]

@@ -30,6 +30,8 @@ def load_config(path=DEFAULT_CONFIG):
         value = cfg["thresholds"].get(key)
         if type(value) is not int or value < 0:
             raise ValueError(f"{key} must be a nonnegative integer")
+    if type(cfg["thresholds"].get("fail_on_explicit_dimm_sensor", False)) is not bool:
+        raise ValueError("fail_on_explicit_dimm_sensor must be boolean")
     slots = cfg["thresholds"].get("expected_slots")
     if not isinstance(slots, list) or not slots or any(not isinstance(s, str) or not s for s in slots) or len(set(slots)) != len(slots):
         raise ValueError("expected_slots must contain unique slot names")
