@@ -10,7 +10,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Read-only DIMM health evidence validator")
     parser.add_argument("--config", default=None)
     parser.add_argument("--mode", choices=("mock", "real"))
-    parser.add_argument("--scenario", choices=SCENARIOS)
+    parser.add_argument("--scenario", choices=SCENARIOS, help="Offline synthetic diagnostic scenario (mock mode only)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
     try:

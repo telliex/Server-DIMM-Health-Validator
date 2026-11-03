@@ -1,0 +1,4 @@
+{
+  "stdout": "DIMM_A1_STATE | 01h | ns | 32.1 | Presence detected\nDIMM_A2_STATE | 01h | ok | 32.1 | Presence detected\nDIMM_B1_STATE | 01h | ok | 32.1 | Presence detected\nDIMM_B2_STATE | 01h | ok | 32.1 | Presence detected",
+  "returncode": 0
+}

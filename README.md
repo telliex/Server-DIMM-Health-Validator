@@ -157,3 +157,12 @@ Tests run entirely without hardware. They cover configuration validation, invent
 Mock mode demonstrates automation concepts and is not actual hardware validation. Real mode is implemented but has not been validated on a physical server. Firmware-specific SDR/SEL formats, localized dmidecode output, differing EDAC drivers and restricted kernel logs may need platform-specific parsers. No reliable physical DIMM mapping is inferred from controller totals. Recognizable text is not a guarantee that a platform exposes every possible diagnostic event. The tool performs a snapshot, not a comprehensive memory test.
 
 Potential improvements: approved platform-specific DIMM mapping, before/after counter baselines, explicit UTC test windows and timestamp normalization, optional `ras-mc-ctl` enrichment where installed, and sanitized real-hardware fixture validation. None of these are required to run the local demo.
+
+## Additional offline edge scenarios
+
+Use `--mode mock --scenario NAME`: `missing_dimm` → FAIL (2),
+`sensor_unsupported` → WARNING (1), `sensor_critical` → WARNING (1) by default,
+`malformed_inventory` and `incomplete_edac` → UNKNOWN (3).
+The critical fixture explicitly says DIMM failure; only enabling
+`thresholds.fail_on_explicit_dimm_sensor: true` changes it to FAIL.
+An ambiguous critical code or unsupported sensor alone never establishes failure.

@@ -24,3 +24,12 @@ def test_console_unknown_and_sections(tmp_path,capsys):
     for title in ("Collection status","Memory inventory","Controller-level ECC counts","Historical events and warnings","Overall diagnostic result","Recommendations"):
         assert title in output
     assert all(len(line)<=72 for line in output.splitlines() if not line.startswith("Report saved:"))
+
+def test_atomic_write_failure_cleans_temporary(tmp_path,monkeypatch):
+    import pytest
+    import src.report as module
+    def fail(*args): raise OSError("simulated replacement failure")
+    monkeypatch.setattr(module.os,"replace",fail)
+    with pytest.raises(OSError):
+        save_report({},tmp_path)
+    assert not list(tmp_path.iterdir())
