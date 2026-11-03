@@ -76,3 +76,7 @@ def test_historical_sel_is_warning(cfg):
 def test_disabled_essential(cfg):
     cfg["tests"]["check_linux_edac"]=False
     assert validate(cfg,MockConnection("healthy"))["overall_result"] == "UNKNOWN"
+
+@pytest.mark.parametrize("text", ["Memory Device\n Size: 32 GB\n Locator: DIMM_A1\nMemory Device\n Size: 32 GB\n Locator: DIMM_A1", " Memory Device\n Size: Unknown\n Locator: DIMM_A1"])
+def test_untrustworthy_inventory(cfg,text):
+    assert validate(cfg,Altered("inventory",text))["overall_result"] == "UNKNOWN"

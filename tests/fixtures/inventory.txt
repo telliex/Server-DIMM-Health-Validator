@@ -1,0 +1,15 @@
+Handle 0x0010, DMI type 17, 92 bytes
+    Memory Device
+        Size: 32768 MB
+        Locator: DIMM_A1
+        Manufacturer: Not Specified
+
+Handle 0x0011, DMI type 17, 92 bytes
+ Memory Device
+    Size: No Module Installed
+    Locator: DIMM_A2
+
+Handle 0x0012, DMI type 16, 23 bytes
+Physical Memory Array
+    Locator: MUST_NOT_MERGE
+    Size: 999 TB

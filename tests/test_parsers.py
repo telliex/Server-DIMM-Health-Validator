@@ -36,3 +36,22 @@ def test_sdr_formats():
     assert parse_sdr("DIMM_A1 | 42h | ok | 32.1 | Presence detected")[0]["status"] == "ok"
     assert parse_sdr("Memory sensor | platform-specific")[0]["status"] == "unknown"
     assert parse_sdr("CPU_TEMP | ok") == []
+
+import pytest
+from pathlib import Path
+
+@pytest.mark.parametrize("size,capacity,present", [("512 MB",0.5,True),("2 TB",2048,True),("32 GB",32,True),("Unknown",None,None),("Not Specified",None,None),("",None,None),("0 GB",0,None),("No Module Installed",None,False)])
+def test_inventory_sizes(size,capacity,present):
+    row=parse_inventory(f"  Memory Device\n Size: {size}\n Locator: DIMM_A1")[0]
+    assert (row["capacity_gb"],row["present"]) == (capacity,present)
+
+def test_inventory_real_style_boundaries():
+    rows=parse_inventory((Path(__file__).parent/"fixtures/inventory.txt").read_text())
+    assert [r["slot"] for r in rows] == ["DIMM_A1","DIMM_A2"]
+    assert rows[0]["capacity_gb"] == 32 and rows[0]["manufacturer"] is None
+    assert rows[1]["present"] is False
+
+@pytest.mark.parametrize("text", ["Memory Device", "Memory Device\n Locator: Unknown", "Memory Device\n Size: 32 GB\n Size: Unknown"])
+def test_truncated_inventory(text):
+    row=parse_inventory(text)[0]
+    assert row["present"] is None
