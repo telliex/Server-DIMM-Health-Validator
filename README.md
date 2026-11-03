@@ -1,37 +1,42 @@
 # Server DIMM Health Validator
 
-A small Python 3.11+ command-line portfolio project demonstrating read-only server DIMM diagnostic collection, hardware test automation, evidence interpretation, and JSON reporting for Lab Engineering / Hardware Validation Technician interviews. All bundled identifiers, addresses and logs are fictional. Scope is exclusively memory DIMMs.
+A lightweight, **read-only Python CLI** for demonstrating server DIMM diagnostic automation. It collects memory inventory and diagnostic evidence from BMC/IPMI and Host Linux, interprets ECC-related observations, and produces console and JSON reports. Built as an interview portfolio project for Lab Engineering / Hardware Validation Technician roles.
+
+> **Demo scope:** All included sample logs, server IDs and IPs are fictional. Mock Mode works offline. Real Mode provides SSH/IPMI command collection but **has not been validated on physical hardware**. This is not an official Intel or MiTAC test procedure.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    CLI[Argparse CLI] --> Config[YAML configuration]
-    Config --> Adapter{Execution adapter}
-    Adapter --> Mock[Local fictional fixtures]
-    Adapter --> Real[Read-only SSH and IPMI]
-    Mock --> Evidence[Structured collection results]
-    Real --> Evidence
-    Evidence --> Parsers[Inventory / SDR / SEL / EDAC / kernel parsers]
-    Parsers --> Rules[Cross-source validation]
-    Rules --> Console[Console summary]
-    Rules --> JSON[JSON report with raw evidence]
+    A[CLI and YAML configuration] --> B{Execution mode}
+    B -->|mock| C[Local synthetic fixtures]
+    B -->|real| D[SSH to Host Linux / IPMI to BMC]
+    C --> E[Unified collection results]
+    D --> E
+    E --> F[Inventory / SEL / SDR / EDAC / kernel parsers]
+    F --> G[Evidence completeness and DIMM validation]
+    G --> H[Console summary]
+    G --> I[Timestamped JSON report]
 ```
 
-## Install
+The collection adapter changes by mode; the parsing and validation logic stays the same. The tool is limited to DIMM inventory, memory sensors, ECC counters and memory-related events.
+
+## Requirements and installation
+
+- Python 3.11+ (substitute your installed 3.11+ interpreter in the commands)
+- `pip` and the packages in `requirements.txt`
+- Mock Mode: no network, root privileges, BMC, SSH or `ipmitool` required
+- Real Mode: authorized reachable server, configured SSH keys and host key, local `ipmitool`, supported BMC IPMI interface, and read permissions for Host Linux diagnostics
 
 ```bash
-cd /Users/telliex/Documents/Server-DIMM-Health-Validator
+cd Server-DIMM-Health-Validator
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
+python -m pytest -q
 ```
 
-Use any installed Python 3.11+ interpreter (for example `python3.13`) if `python3.11` is unavailable.
-
-Only PyYAML is needed at runtime; pytest is used for testing. Mock mode needs no network, server, root, SSH or ipmitool. No frontend, database, Docker or cloud service is involved.
-
-## Run the demonstration
+## Quick start — offline mock scenarios
 
 ```bash
 python -m src.main --config config/test_env.yaml
@@ -41,128 +46,167 @@ python -m src.main --mode mock --scenario uncorrected_error
 python -m src.main --mode mock --scenario unavailable
 ```
 
-| Scenario | Current controller CE / UE | Expected overall | Exit code |
+| Scenario | What it demonstrates | Expected result | Exit code |
 | --- | --- | --- | --- |
-| healthy (TC001) | 0 / 0 | PASS | 0 |
-| corrected_error (TC002) | 3 / 0 | FAIL | 2 |
-| uncorrected_error (TC003) | 0 / 1 | FAIL | 2 |
-| unavailable (TC004) | unavailable | UNKNOWN | 3 |
+| `healthy` | Required evidence available; observed CE=0, UE=0 | PASS | 0 |
+| `corrected_error` | Corrected ECC counter exceeds demo threshold | FAIL | 2 |
+| `uncorrected_error` | Uncorrected ECC detected | FAIL | 2 |
+| `unavailable` | Required EDAC evidence missing | UNKNOWN | 3 |
 
-WARNING exits 1. Nonzero diagnostic exit codes are intentional, not CLI crashes. Each run replaces `reports/dimm_report.json`; preserve a copy if comparing runs. Results are deterministic except the UTC report timestamp.
+`WARNING` uses exit code `1`. Nonzero diagnostic exit codes indicate test outcomes, not necessarily application crashes. Additional scenarios: `missing_dimm` → FAIL (2), `sensor_unsupported` and `sensor_critical` → WARNING (1), `malformed_inventory` and `incomplete_edac` → UNKNOWN (3). All are available through the same `--scenario` option and appear in `--help`.
 
 ## Configuration
 
-`config/test_env.yaml` contains fictional server identity, connection addresses, execution mode/scenario/timeout, enabled diagnostic sources, thresholds, expected physical slot names, and JSON report directory. Relative report paths resolve against the configuration file's directory. Default config discovery is independent of the current working directory.
+Edit `config/test_env.yaml` to set server identity, mock scenario, collection switches, expected populated DIMM slots and demonstration thresholds. All example IP addresses use documentation-only ranges. Do not commit real credentials, internal addresses or proprietary logs.
 
-Set `thresholds.expected_slots` to the actual expected populated slots for an authorized server. Empty slots outside that list are not missing-DIMM failures. CE and UE thresholds apply to the sum of observed memory-controller counters, not to inferred individual DIMMs. Default demonstration thresholds are zero; they are not Intel or manufacturing acceptance criteria. Required enabled sources must return usable data. Inventory and EDAC are essential even if explicitly disabled, so disabling either yields UNKNOWN unless a confirmed FAIL exists.
-
-## Interpretation
-
-PASS means required enabled collection succeeded and no configured issue was detected. FAIL takes precedence over missing evidence; otherwise missing evidence produces UNKNOWN. Noncritical unavailable sensors and historical memory events produce WARNING. SMBIOS inventory is presence evidence, not proof of health. `ns` or unknown SDR status alone never establishes a faulty DIMM.
-
-Raw command observations and original event text remain separate from conclusions. SEL and kernel events are treated as historical because no test window or counter baseline is defined. They require timestamp review and do not automatically become new failures. EDAC values are current cumulative controller counters with an unknown reset epoch; counts are not added to overlapping SEL/kernel observations. This avoids double counting.
-
-The mock platform deliberately exposes controller/channel evidence without a reliable physical-slot mapping. Individual DIMM ECC counts remain `null` and individual health remains UNKNOWN even when overall evidence passes. A missing expected DIMM has an individual FAIL. No controller count is fabricated as a per-slot count.
-
-## Example console output (TC002, abridged)
-
-```text
-SERVER DIMM HEALTH VALIDATOR
-Server SN: DEMO-SERVER-001
-Test Stage: SAT
-Execution Mode: MOCK
-[PASS] inventory
-[PASS] sel
-[PASS] sdr
-[PASS] edac
-[PASS] kernel
-DIMM_B1 | 32 GB | CE: unknown | UE: unknown | UNKNOWN
-Controller counters: CE=3, UE=0 (complete=True)
-OVERALL RESULT: FAIL
-failures: EDAC corrected_errors: 3 exceeds 0 (controller scope)
-Report saved: .../reports/dimm_report.json
+```yaml
+execution:
+  mode: mock
+  mock_scenario: healthy
+  timeout_seconds: 30
+thresholds:
+  fail_on_explicit_dimm_sensor: false
+  max_corrected_errors: 0
+  max_uncorrected_errors: 0
+  expected_slots: [DIMM_A1, DIMM_A2, DIMM_B1, DIMM_B2]
 ```
 
-Collection PASS means collection succeeded; it is not a hardware-health conclusion.
+**Thresholds are illustrative demo policy, not vendor acceptance criteria.** `expected_slots` describes slots expected to be populated; other empty slots are not automatically failures.
 
-## Example JSON report (abridged)
+## What the tool collects
 
-```json
-{
-  "timestamp": "2026-01-05T10:10:00+00:00",
-  "server_sn": "DEMO-SERVER-001",
-  "test_stage": "SAT",
-  "execution_mode": "mock",
-  "test_name": "DIMM_HEALTH_VALIDATION",
-  "overall_result": "FAIL",
-  "dimm_results": [
-    {
-      "slot": "DIMM_B1",
-      "capacity_gb": 32,
-      "corrected_errors": null,
-      "uncorrected_errors": null,
-      "status": "UNKNOWN",
-      "evidence": ["Controller counters cannot be reliably attributed to this physical slot."]
-    }
-  ],
-  "failures": ["EDAC corrected_errors: 3 exceeds 0 (controller scope)"],
-  "unavailable_data": []
-}
-```
+| Source | Real-mode command/interface | Purpose |
+| --- | --- | --- |
+| BMC SEL | `ipmitool ... sel elist` | Historical memory-related events |
+| BMC SDR | `ipmitool ... sdr elist` | Memory sensor observations, if exposed |
+| Host inventory | `sudo -n dmidecode -t 17` over SSH | SMBIOS DIMM presence and metadata |
+| Host kernel | `sudo -n dmesg -T` over SSH | Historical EDAC/MCE/memory messages |
+| Host EDAC | Read `/sys/devices/system/edac/mc/mc*/{ce_count,ue_count}` over SSH | Controller-level ECC counters, if supported |
 
-Full reports include per-source checks, stdout/stderr, collection errors, parsed inventory, sensors, historical events, controller counters, recommendations, unavailable data, and limitations. JSON writes replace the report atomically.
+Collection failure, unsupported hardware monitoring, incomplete parsing and no observed errors are **different states**. The validator should not turn missing evidence into zero errors or PASS.
 
-## Real mode: implemented, not physically validated
+## Interpretation and limitations
 
-Copy the sample YAML to a local configuration and supply an explicitly authorized server's addresses, usernames, expected slots and report path. Real mode always requires an explicit `--config`; it never falls back to mock results.
+- **PASS:** Required evidence is complete and no configured failure criterion is met. This is not proof of comprehensive DIMM health.
+- **FAIL:** Trustworthy evidence meets a configured failure criterion (for example, a CE/UE count above the demo threshold or a confirmed missing expected DIMM).
+- **WARNING:** Suspicious/noncritical evidence requiring review but not establishing a current failure.
+- **UNKNOWN:** Required collection or interpretation is incomplete, with no confirmed FAIL.
+- BMC SEL and kernel events can be historical; timestamps and assert/deassert context matter.
+- EDAC counters are often cumulative at memory-controller scope. Without validated topology mapping, **do not assign counts to a particular physical DIMM**. Overall PASS can coexist with unknown per-slot ECC attribution.
+- SMBIOS `dmidecode` inventory does not prove DIMM health. BMC sensor names, EDAC availability and firmware behavior vary by platform.
+- A corrected ECC error may be operationally recoverable; this project's zero-error threshold is intentionally strict for demonstration.
 
-Prerequisites:
+## JSON reporting
 
-- Local OpenSSH client and `ipmitool`, network access to authorized host and BMC.
-- SSH key authentication (agent or standard OpenSSH configuration), verified host keys already present in `known_hosts`. Host-key checking remains enabled.
-- A host account with narrowly approved passwordless `sudo -n` permissions for the read-only collectors. The EDAC collector invokes a fixed `sudo -n sh -c` script; have the administrator review it rather than granting broad shell privileges. Platforms allowing direct unprivileged EDAC reads can adapt this collector.
-- BMC account with permission to read SEL/SDR, and `IPMI_PASSWORD` supplied securely through the environment. Never commit credentials or private keys.
+Each execution produces a structured report containing the server/test context, collection and parsing status, observed inventory, controller-level ECC counters, sensor/event evidence, conclusions, recommendations and limitations. Each run retains a unique UTC timestamp + sanitized scenario + UUID history file; `dimm_report.json` is atomically replaced as the latest-run convenience copy. Both writes are atomic individually, not a transaction; if latest-copy replacement fails, an already-written history file remains available. Inspect `reports/` after running. Do not confuse an individual DIMM's unknown attribution with an overall UNKNOWN test result.
+
+## Real Mode — authorized hardware only
+
+Use a separate, explicitly configured YAML file with authorized server addresses. Configure SSH keys and verified known-host entries. Supply the BMC password through `IPMI_PASSWORD` in the environment, not in the repository. Real Mode requires an explicit `--config`; it can be selected through `--mode real` or `execution.mode: real` in that configuration. For a clear demo, select it explicitly:
 
 ```bash
-# Enter a secret without putting it in shell history (bash/zsh).
-read -s 'IPMI_PASSWORD?BMC password: '
-export IPMI_PASSWORD
-python -m src.main --mode real --config config/authorized_server.yaml
-unset IPMI_PASSWORD
+# Set IPMI_PASSWORD through your approved secure environment mechanism.
+# Do not put a real password in shell history.
+python -m src.main --config path/to/authorized_server.yaml --mode real
 ```
 
-The prompt syntax above is for zsh; for bash use `read -s -p 'BMC password: ' IPMI_PASSWORD`.
+Real Mode is **read-only** and does not reset power, clear SEL, change firmware or perform destructive stress testing. Actual command permissions, SMBIOS formatting, BMC event wording and EDAC topology require validation on the target platform. Never claim hardware validation until performed.
 
-Supported collection commands:
-
-```text
-ipmitool -I lanplus -H <BMC_IP> -U <USER> -E sel elist
-ipmitool -I lanplus -H <BMC_IP> -U <USER> -E sdr elist
-ssh <USER>@<HOST> "sudo -n dmidecode -t 17"
-ssh <USER>@<HOST> "sudo -n dmesg -T"
-```
-
-The fixed EDAC script reads `ce_count` and `ue_count` for every `mc[0-9]*` directory under `/sys/devices/system/edac/mc/`. It reports unavailable/unreadable counters as collection errors or incomplete evidence. Commands use argument arrays, noninteractive authentication and bounded timeouts. Connection failure, authentication failure, permission denial, missing commands and unsupported monitoring remain explicit errors. No resets, SEL clearing, firmware/BIOS changes or destructive stress tests are performed.
-
-## Testing
+## Run automated tests
 
 ```bash
 python -m pytest -q
 ```
 
-Tests run entirely without hardware. They cover configuration validation, inventory/SDR/SEL/kernel/EDAC parsing, thresholds, missing expected DIMMs, unknown sensors, historical events, missing evidence, failure precedence, CLI scenarios and JSON reports. Real subprocess calls are mocked for success, timeout, missing utility, authentication/permission errors, and BMC failure. Mock CLI tests reject any attempt to spawn an external command.
+Tests use synthetic fixtures and mocks, not external servers. See `VALIDATION.md` for recorded execution results after implementation.
 
-## Limitations and future work
+## Two-minute interview demo
 
-Mock mode demonstrates automation concepts and is not actual hardware validation. Real mode is implemented but has not been validated on a physical server. Firmware-specific SDR/SEL formats, localized dmidecode output, differing EDAC drivers and restricted kernel logs may need platform-specific parsers. No reliable physical DIMM mapping is inferred from controller totals. Recognizable text is not a guarantee that a platform exposes every possible diagnostic event. The tool performs a snapshot, not a comprehensive memory test.
+1. Explain the YAML configuration and the mock/real adapter boundary.
+2. Run `healthy`: show complete evidence and PASS with observed controller CE=0/UE=0.
+3. Run `corrected_error`: show the simulated CE increase, the configured threshold and FAIL.
+4. Run `unavailable`: explain why absent EDAC evidence means UNKNOWN rather than PASS.
+5. Open two JSON reports and explain evidence vs diagnosis, controller-level vs physical DIMM attribution, and how SSH/IPMI would replace fixtures on an authorized server.
 
-Potential improvements: approved platform-specific DIMM mapping, before/after counter baselines, explicit UTC test windows and timestamp normalization, optional `ras-mc-ctl` enrichment where installed, and sanitized real-hardware fixture validation. None of these are required to run the local demo.
+**Suggested explanation:** “I designed a read-only Python DIMM diagnostic tool with a mock execution mode and a real SSH/IPMI collection adapter. It collects BMC and Linux evidence, checks inventory and ECC-related observations, and produces auditable results. I intentionally distinguish missing data from healthy results and avoid attributing controller-level errors to a specific DIMM without reliable mapping.”
 
-## Additional offline edge scenarios
+## Troubleshooting
 
-Use `--mode mock --scenario NAME`: `missing_dimm` → FAIL (2),
-`sensor_unsupported` → WARNING (1), `sensor_critical` → WARNING (1) by default,
-`malformed_inventory` and `incomplete_edac` → UNKNOWN (3).
-The critical fixture explicitly says DIMM failure; only enabling
-`thresholds.fail_on_explicit_dimm_sensor: true` changes it to FAIL.
-An ambiguous critical code or unsupported sensor alone never establishes failure.
+- `ModuleNotFoundError`: activate the virtual environment and install `requirements.txt`.
+- `UNKNOWN` in Mock Mode: inspect source collection and parsing status in the JSON report; do not force PASS.
+- Real-mode SSH failure: verify network reachability, key authentication, known-host entry and `sudo -n` permissions.
+- Real-mode IPMI failure: verify authorized BMC network access, `ipmitool` installation and `IPMI_PASSWORD`.
+- EDAC unavailable: the platform may lack a supported driver or expose counters differently; report UNKNOWN until coverage is understood.
+
+## Safety and future work
+
+Keep the scope limited to DIMM diagnostics. Potential improvements include platform-specific parser fixtures, validated slot mapping, and a defined measurement window or counter baseline. Do not upload proprietary logs or credentials to a public repository.
+
+## Sensor failure policy
+
+The default `thresholds.fail_on_explicit_dimm_sensor: false` treats non-OK sensors as warnings. Opting in permits FAIL only for critical codes (`cr`, `lnr`, `unr`, `lcr`, `ucr`) accompanied by explicit DIMM failure/failed wording, without deasserted or negated failure text. A code alone, temperature wording or `ns` is insufficient. This intentionally narrow rule still needs target-platform review. Historical SEL/kernel entries never establish current failures by themselves.
+
+## Report schema and compatibility
+
+`checks.<source>` contains:
+
+| Field | Meaning |
+| --- | --- |
+| `collection_status` | SUCCESS, FAILED, or SKIPPED: acquisition only |
+| `evidence_status` | COMPLETE, INCOMPLETE, or UNAVAILABLE: usable parser evidence |
+| `diagnostic_result` | PASS, WARNING, FAIL, or UNKNOWN: source conclusion |
+| `status` | Legacy combined collection/completeness status; not hardware health |
+
+The overall result combines independent evidence: confirmed FAIL dominates missing required evidence, otherwise missing evidence yields UNKNOWN. Only complete EDAC datasets are compared with thresholds. If any controller counter is missing, duplicated or malformed, aggregate CE/UE is `null`, while independently observed controller fields remain available. Counts are never added to SEL/kernel events. No per-slot ECC mapping is required for overall PASS; per-DIMM counts stay `null` and slot attribution UNKNOWN.
+
+Example (abridged unavailable report):
+
+```json
+{
+  "overall_result": "UNKNOWN",
+  "checks": {
+    "edac": {
+      "collection_status": "FAILED",
+      "evidence_status": "UNAVAILABLE",
+      "diagnostic_result": "UNKNOWN"
+    }
+  },
+  "observations": {
+    "edac": {
+      "available": false,
+      "controllers": {},
+      "corrected_errors": null,
+      "uncorrected_errors": null,
+      "physical_slot": "unknown"
+    }
+  }
+}
+```
+
+Example console excerpt:
+
+```text
+Collection status
+-----------------
+edac: FAILED | evidence: UNAVAILABLE | diagnosis: UNKNOWN
+
+Controller-level ECC counts
+---------------------------
+CE: UNKNOWN | UE: UNKNOWN | complete: False
+
+Overall diagnostic result
+-------------------------
+UNKNOWN
+```
+
+## Real collection prerequisites and boundaries
+
+SSH uses key authentication (`BatchMode=yes`), strict verified host keys and bounded command timeouts. Provision `known_hosts` beforehand. Approve narrowly scoped noninteractive read permissions for dmidecode, dmesg and the fixed EDAC script. The current EDAC collector uses `sudo -n sh -c`; an administrator should review or replace it with a restricted read-only wrapper rather than granting broad shell permission. BMC credentials come from `IPMI_PASSWORD` with ipmitool `-E`, never command-line password arguments or YAML.
+
+Missing binaries, permission/authentication failure, unreachable endpoints and timeouts produce collection errors, not mock fallback or PASS. Empty/unrecognized required data yields UNKNOWN. Inventory and EDAC remain essential even if disabled; other enabled source switches define required coverage. Relative report directories resolve against the YAML location. The default report directory is `reports/`.
+
+Zero ECC counters are observed snapshots, not comprehensive memory validation. SEL/kernel chronology has no defensible measurement window or baseline. Parsers target common English text formats, not every firmware vocabulary or localization. Sensor semantics and reliable physical mapping require platform validation. Optional ras-mc-ctl enrichment and before/after counter windows remain future work.
+
+Example actual history filename from verification:
+
+`dimm_20261103T041828873405Z_healthy_a90e8e3ea3b741e9ab59667e1835579a.json`
