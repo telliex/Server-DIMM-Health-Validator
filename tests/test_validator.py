@@ -87,3 +87,20 @@ def test_explicit_sensor_policy(cfg):
     cfg["thresholds"]["fail_on_explicit_dimm_sensor"] = True
     assert validate(cfg,adapter)["overall_result"] == "FAIL"
     assert validate(cfg,Altered("sdr","DIMM_A1 | cr | temperature high"))["overall_result"] == "WARNING"
+
+def test_partial_edac_not_thresholded(cfg):
+    report=validate(cfg,Altered("edac","/sys/devices/system/edac/mc/mc0/ce_count=99"))
+    assert report["overall_result"] == "UNKNOWN"
+    assert report["checks"]["edac"]["collection_status"] == "SUCCESS"
+    assert report["checks"]["edac"]["evidence_status"] == "INCOMPLETE"
+    assert report["checks"]["edac"]["diagnostic_result"] == "UNKNOWN"
+
+def test_failed_edac_null(cfg):
+    report=validate(cfg,MockConnection("unavailable"))
+    assert report["observations"]["edac"]["corrected_errors"] is None
+    assert report["checks"]["edac"]["collection_status"] == "FAILED"
+
+def test_collection_success_diagnostic_failure(cfg):
+    check=validate(cfg,MockConnection("corrected_error"))["checks"]["edac"]
+    assert check["collection_status"] == "SUCCESS" and check["evidence_status"] == "COMPLETE"
+    assert check["diagnostic_result"] == "FAIL"

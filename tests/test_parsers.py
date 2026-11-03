@@ -69,3 +69,13 @@ def test_event_false_positives(line):
 @pytest.mark.parametrize("line,explicit", [("DIMM_A1 | cr | DIMM failure asserted",True),("DIMM_A1 | cr | temperature high",False),("DIMM_A1 | cr | DIMM failure deasserted",False),("DIMM_A1 | ns",False)])
 def test_sensor_semantics(line,explicit):
     assert parse_sdr(line)[0]["unambiguous_failure"] is explicit
+
+@pytest.mark.parametrize("text", ["", "/sys/devices/system/edac/mc/mc0/ce_count=3", "/sys/devices/system/edac/mc/mc0/ue_count=1", "/sys/devices/system/edac/mc/mc0/ce_count=bad", "/sys/devices/system/edac/mc/mc0/ce_count=-1", "/sys/devices/system/edac/mc/mc0/ce_count=0\n/sys/devices/system/edac/mc/mc0/ce_count=0\n/sys/devices/system/edac/mc/mc0/ue_count=0"])
+def test_unknown_edac_totals(text):
+    result=parse_edac(text)
+    assert not result["available"]
+    assert result["corrected_errors"] is None and result["uncorrected_errors"] is None
+
+def test_partial_controller_evidence():
+    result=parse_edac("/sys/devices/system/edac/mc/mc0/ce_count=3")
+    assert result["controllers"]["mc0"] == {"ce_count":3,"ue_count":None}

@@ -32,21 +32,28 @@ def parse_inventory(text):
     return result
 
 def parse_edac(text):
-    controllers = {}
-    invalid = []
+    """Totals require a complete dataset; retain partial controller observations."""
+    controllers, invalid, seen = {}, [], set()
     for line in text.splitlines():
-        match = re.fullmatch(r"/sys/devices/system/edac/mc/(mc\d+)/(ce_count|ue_count)=(\d+)", line.strip())
-        if match:
-            mc, kind, value = match.groups()
-            if kind in controllers.setdefault(mc, {}):
-                invalid.append(line)
-            controllers[mc][kind] = int(value)
-        elif line.strip():
+        if not line.strip():
+            continue
+        match = re.fullmatch(r"/sys/devices/system/edac/mc/(mc\d+)/(ce_count|ue_count)=(.*)", line.strip())
+        if not match:
             invalid.append(line)
-    complete = bool(controllers) and not invalid and all(set(c) == {"ce_count", "ue_count"} for c in controllers.values())
+            continue
+        mc, kind, value = match.groups()
+        counters = controllers.setdefault(mc, {"ce_count": None, "ue_count": None})
+        key = (mc, kind)
+        if key in seen or not re.fullmatch(r"[0-9]+", value):
+            counters[kind] = None
+            invalid.append(line)
+        else:
+            counters[kind] = int(value)
+        seen.add(key)
+    complete = bool(controllers) and not invalid and all(all(v is not None for v in c.values()) for c in controllers.values())
     return {"available": complete, "controllers": controllers, "invalid_lines": invalid,
-            "corrected_errors": sum(c.get("ce_count", 0) for c in controllers.values()),
-            "uncorrected_errors": sum(c.get("ue_count", 0) for c in controllers.values()),
+            "corrected_errors": sum(c["ce_count"] for c in controllers.values()) if complete else None,
+            "uncorrected_errors": sum(c["ue_count"] for c in controllers.values()) if complete else None,
             "physical_slot": "unknown", "scope": "current cumulative controller counters; reset epoch unknown"}
 
 def parse_kernel(text):
