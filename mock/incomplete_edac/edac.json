@@ -1,0 +1,4 @@
+{
+  "stdout": "/sys/devices/system/edac/mc/mc0/ce_count=3\n",
+  "returncode": 0
+}

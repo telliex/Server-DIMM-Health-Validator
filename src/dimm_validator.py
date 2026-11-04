@@ -52,10 +52,12 @@ def validate(config, connection):
                       "recommendation": "Verify physical slot mapping and review hardware diagnostics."})
     # Preserve observed failures even when another controller/source is incomplete.
     for field, threshold in (("corrected_errors", "max_corrected_errors"), ("uncorrected_errors", "max_uncorrected_errors")):
-        if edac[field] > config["thresholds"][threshold]:
+        if edac[field] is not None and edac[field] > config["thresholds"][threshold]:
             failures.append(f"EDAC {field}: {edac[field]} exceeds {config['thresholds'][threshold]} (controller scope)")
     for sensor in sensors:
-        if sensor["status"] != "ok":
+        if sensor["unambiguous_failure"] and config["thresholds"].get("fail_on_explicit_dimm_sensor", False):
+            failures.append(f"Explicit DIMM failure sensor: {sensor['name']}")
+        elif sensor["status"] != "ok":
             warnings.append(f"Sensor {sensor['name']}: {sensor['status']}; physical fault not established")
     if not sensors and "sdr" in raw and raw["sdr"].ok:
         warnings.append("BMC exposes no recognized memory sensors; per-DIMM health unavailable")
@@ -68,6 +70,23 @@ def validate(config, connection):
         if source not in raw:
             missing.append(f"{source}: essential diagnostic check disabled")
     result = "FAIL" if failures else "UNKNOWN" if missing else "WARNING" if warnings else "PASS"
+    for source, check in checks.items():
+        if source not in raw:
+            check.update(collection_status="SKIPPED", evidence_status="UNAVAILABLE", diagnostic_result="UNKNOWN")
+            continue
+        check["collection_status"] = "SUCCESS" if raw[source].ok else "FAILED"
+        check["evidence_status"] = "COMPLETE" if check["status"] == "PASS" else "INCOMPLETE" if raw[source].ok else "UNAVAILABLE"
+        check["diagnostic_result"] = "UNKNOWN" if check["evidence_status"] != "COMPLETE" else "PASS"
+        if source == "inventory" and any(d["status"] == "FAIL" for d in dimms):
+            check["diagnostic_result"] = "FAIL"
+        if source == "edac" and any(message.startswith("EDAC ") for message in failures):
+            check["diagnostic_result"] = "FAIL"
+        if source == "sdr" and sensors:
+            check["diagnostic_result"] = "FAIL" if any(message.startswith("Explicit DIMM") for message in failures) else "WARNING" if any(sensor["status"] != "ok" for sensor in sensors) else check["diagnostic_result"]
+        elif source == "sdr" and check["evidence_status"] == "COMPLETE":
+            check["diagnostic_result"] = "WARNING"
+        if source in ("sel", "kernel") and any(e["source"] == source for e in events) and check["evidence_status"] == "COMPLETE":
+            check["diagnostic_result"] = "WARNING"
     return {"timestamp": datetime.now(timezone.utc).isoformat(), "server_sn": config["server"]["serial_number"],
             "project": config["server"]["project"], "test_stage": config["server"]["test_stage"],
             "execution_mode": config["execution"]["mode"], "mock_scenario": config["execution"].get("mock_scenario") if config["execution"]["mode"] == "mock" else None,

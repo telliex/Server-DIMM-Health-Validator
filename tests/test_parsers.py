@@ -36,3 +36,46 @@ def test_sdr_formats():
     assert parse_sdr("DIMM_A1 | 42h | ok | 32.1 | Presence detected")[0]["status"] == "ok"
     assert parse_sdr("Memory sensor | platform-specific")[0]["status"] == "unknown"
     assert parse_sdr("CPU_TEMP | ok") == []
+
+import pytest
+from pathlib import Path
+
+@pytest.mark.parametrize("size,capacity,present", [("512 MB",0.5,True),("2 TB",2048,True),("32 GB",32,True),("Unknown",None,None),("Not Specified",None,None),("",None,None),("0 GB",0,None),("No Module Installed",None,False)])
+def test_inventory_sizes(size,capacity,present):
+    row=parse_inventory(f"  Memory Device\n Size: {size}\n Locator: DIMM_A1")[0]
+    assert (row["capacity_gb"],row["present"]) == (capacity,present)
+
+def test_inventory_real_style_boundaries():
+    rows=parse_inventory((Path(__file__).parent/"fixtures/inventory.txt").read_text())
+    assert [r["slot"] for r in rows] == ["DIMM_A1","DIMM_A2"]
+    assert rows[0]["capacity_gb"] == 32 and rows[0]["manufacturer"] is None
+    assert rows[1]["present"] is False
+
+@pytest.mark.parametrize("text", ["Memory Device", "Memory Device\n Locator: Unknown", "Memory Device\n Size: 32 GB\n Size: Unknown"])
+def test_truncated_inventory(text):
+    row=parse_inventory(text)[0]
+    assert row["present"] is None
+
+def test_event_context_and_types():
+    events=parse_sel((Path(__file__).parent/"fixtures/events.txt").read_text())
+    assert [e["event_type"] for e in events] == ["ecc","ecc","training_failure","configuration_error","dimm_disabled"]
+    assert events[1]["assertion"] == "deasserted"
+    assert all(e["physical_slot"] == "unknown" for e in events)
+
+@pytest.mark.parametrize("line", ["Memory: no ECC errors", "EDAC: 0 corrected errors", "CPU thermal failure", "Memory controller initialized", "disk I/O error"])
+def test_event_false_positives(line):
+    assert parse_kernel(line) == []
+
+@pytest.mark.parametrize("line,explicit", [("DIMM_A1 | cr | DIMM failure asserted",True),("DIMM_A1 | cr | temperature high",False),("DIMM_A1 | cr | DIMM failure deasserted",False),("DIMM_A1 | ns",False)])
+def test_sensor_semantics(line,explicit):
+    assert parse_sdr(line)[0]["unambiguous_failure"] is explicit
+
+@pytest.mark.parametrize("text", ["", "/sys/devices/system/edac/mc/mc0/ce_count=3", "/sys/devices/system/edac/mc/mc0/ue_count=1", "/sys/devices/system/edac/mc/mc0/ce_count=bad", "/sys/devices/system/edac/mc/mc0/ce_count=-1", "/sys/devices/system/edac/mc/mc0/ce_count=0\n/sys/devices/system/edac/mc/mc0/ce_count=0\n/sys/devices/system/edac/mc/mc0/ue_count=0"])
+def test_unknown_edac_totals(text):
+    result=parse_edac(text)
+    assert not result["available"]
+    assert result["corrected_errors"] is None and result["uncorrected_errors"] is None
+
+def test_partial_controller_evidence():
+    result=parse_edac("/sys/devices/system/edac/mc/mc0/ce_count=3")
+    assert result["controllers"]["mc0"] == {"ce_count":3,"ue_count":None}
