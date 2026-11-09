@@ -1,0 +1,18 @@
+# Project example contract only; replace with an authorized service mapping.
+adapter: rest
+hardware_config: test_env.yaml
+database: ../reports/manufacturing.sqlite3
+rest:
+  base_url: https://sfcs.example.invalid/api
+  token_env: SFCS_API_TOKEN
+  auth_header: Authorization
+  auth_scheme: Bearer
+  timeout: 10
+  endpoints:
+    unit: /units/{serial_number}
+    station: /station-validation
+    result: /results
+    history: /units/{serial_number}/history
+retry:
+  max_attempts: 3
+  backoff: 0.25
