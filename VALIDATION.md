@@ -39,3 +39,22 @@ Actual retained history filenames:
 - `dimm_20261103T041829711156Z_incomplete_edac_d96d35e7c9d248569ffcdf0015d93e41.json`
 
 All original scenario expectations are preserved. Additional sensor critical scenario defaults to WARNING; opt-in FAIL policy is covered by unit tests. Subprocess failure cases use mocks; no network/root/hardware needed for tests. Real Mode remains implemented but not physically validated. Input planning documents are intentionally untracked. No changes pushed.
+
+# SFCS / MES integration verification
+
+Environment: Python 3.12; synthetic fixtures and loopback HTTP only.
+Baseline before changes: 97 passed. Final command: `.venv/bin/python -m pytest -q`.
+
+```text
+129 passed in 6.81s
+```
+
+32 new parametrized cases cover diagnostic outcomes and submission, eligibility gates,
+offline retry and database reopen, crash recovery before enqueue, idempotency/conflicts,
+multiple retests, REST headers and contract, HTTP/connection/timeout failures,
+malformed JSON and acknowledgements, and manufacturing CLI execution/history.
+All original 97 tests pass unchanged.
+
+Executed the documented manufacturing Mock run command successfully: PASS, upload
+sent, unique Run ID returned. The subsequent retry command returned an empty queue.
+No physical hardware, proprietary data or real manufacturing service was used.

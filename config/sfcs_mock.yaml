@@ -1,0 +1,8 @@
+adapter: mock
+hardware_config: test_env.yaml
+database: ../reports/manufacturing.sqlite3
+mock_database: ../reports/mock_sfcs.sqlite3
+mock_offline: false
+retry:
+  max_attempts: 3
+  backoff: 0.25

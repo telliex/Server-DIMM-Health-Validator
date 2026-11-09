@@ -210,3 +210,192 @@ Zero ECC counters are observed snapshots, not comprehensive memory validation. S
 Example actual history filename from verification:
 
 `dimm_20261103T041828873405Z_healthy_a90e8e3ea3b741e9ab59667e1835579a.json`
+
+## SFCS / MES manufacturing integration
+
+The manufacturing CLI is separate from `src.main`; all original arguments, diagnostic
+results and exit codes remain available. This extension uses synthetic manufacturing
+records only. It connects to no MiTAC systems and assumes no proprietary API schema.
+
+```mermaid
+flowchart TD
+    CLI[Manufacturing CLI] --> Gate[Get unit and validate stage / station]
+    Gate --> SFCS[SFCSAdapter: Mock or REST]
+    Gate --> Validator[Existing DIMM validator]
+    Validator --> Collectors[Existing Mock or BMC / Linux collectors]
+    Validator --> Run[Run ID and immutable result]
+    Run --> DB[SQLite result history and outbox]
+    DB --> Upload[Bounded retry / explicit retry command]
+    Upload --> SFCS
+```
+
+`SFCSAdapter` defines `get_unit(serial_number)`,
+`validate_station(serial_number, station)`, `upload_result(test_result)` and
+`get_test_history(serial_number)`. Collectors and parsers contain no manufacturing
+communication. `src/sfcs/workflow.py` owns orchestration; `store.py` owns history;
+`delivery.py` owns submission. The implementation uses Python's standard HTTP and
+SQLite libraries, with no additional dependencies.
+
+### Offline mock setup and end-to-end example
+
+Install the existing requirements, then run:
+
+```bash
+python -m src.sfcs_cli --config config/sfcs_mock.yaml run \
+  --serial-number DEMO-SERVER-001 --stage SAT --station SAT-DIMM-01
+python -m src.sfcs_cli --config config/sfcs_mock.yaml run \
+  --serial-number DEMO-SERVER-001 --stage SAT --station SAT-DIMM-01 \
+  --scenario corrected_error
+# Copy the failed execution's run_id into the following retest command:
+python -m src.sfcs_cli --config config/sfcs_mock.yaml run \
+  --serial-number DEMO-SERVER-001 --stage SAT --station SAT-DIMM-01 \
+  --scenario healthy --retest-of FAILED_RUN_ID
+python -m src.sfcs_cli --config config/sfcs_mock.yaml history --serial-number DEMO-SERVER-001
+python -m src.sfcs_cli --config config/sfcs_mock.yaml history --serial-number DEMO-SERVER-001 --remote
+python -m src.sfcs_cli --config config/sfcs_mock.yaml retry
+```
+
+A second synthetic unit, `DEMO-SERVER-002`, is eligible at `IST-DIMM-01` in IST.
+Unknown serial numbers, stage mismatches and invalid stations stop before collection.
+Unit lookup or eligibility connection failures also stop testing; there is no cached
+eligibility bypass. `mock_offline: true` simulates service unavailability. To demonstrate
+upload-only outages, automated tests turn the adapter offline after eligibility and
+execution, then reopen the database and retry when online.
+
+Example manufacturing configuration (`config/sfcs_mock.yaml`):
+
+```yaml
+adapter: mock
+hardware_config: test_env.yaml
+database: ../reports/manufacturing.sqlite3
+mock_database: ../reports/mock_sfcs.sqlite3
+mock_offline: false
+retry:
+  max_attempts: 3
+  backoff: 0.25
+```
+
+Paths resolve relative to this YAML file. The hardware config independently selects
+mock or real collectors; shipped examples always select mock. Explicitly selecting a
+real hardware config requires the same authorized SSH/IPMI setup as the original CLI.
+The new CLI prints a JSON summary; integration log messages are JSON on stderr.
+Exit codes: 0 = PASS and sent (or successful history/retry); 2 = manufacturing FAIL
+and sent; 3 = configuration, eligibility or execution error; 4 = upload pending or
+rejected. Original diagnostic CLI exit codes remain unchanged.
+
+### Traceability and manufacturing policy
+
+Every admitted execution receives a UUID Run ID, SN, PN, IST/SAT stage, station,
+test name/version, start/completion timestamps in UTC, original DIMM evidence,
+failure information and optional parent Run ID. `execution_type` is INITIAL or
+RETEST; a retest has its own PASS/FAIL outcome. Parents must already exist locally
+for the same SN, stage and station. Multiple retests preserve every previous result.
+Preflight failures are logged and do not create a completed DIMM test record.
+
+Manufacturing acceptance is PASS only when the diagnostic result is PASS.
+WARNING, UNKNOWN and FAIL become manufacturing FAIL, while `diagnostic_result`
+and the complete original report retain their meaning. This is a demonstration
+acceptance policy, not a vendor production specification. The manufacturing CLI
+stores the full hardware report inside `dimm_health`; the original CLI continues
+writing its existing JSON reports.
+
+SQLite stores immutable canonical payloads and separate delivery states:
+`pending`, `sent`, `rejected`. Results commit before network submission. A later
+`retry` discovers even a run saved before the process could create its queue entry.
+Temporary failures get bounded exponential delays (capped at five seconds per delay)
+and remain pending after the configured attempts. No background daemon is required;
+schedule `retry` externally if desired. Permanent failures remain rejected for review.
+An identical Run ID/payload is a no-op; a different payload with the same ID conflicts.
+Databases contain hardware evidence: place them in an appropriately protected local
+directory and back them up. The latest diagnostic JSON copy is not manufacturing history.
+
+### Example REST contract
+
+`config/sfcs_rest.example.yaml` documents endpoint, timeout and authentication
+configuration. Its `.invalid` address is intentionally unusable. Supply a token
+through the named environment variable using your secret-management mechanism;
+do not put secrets in YAML, commands, committed files or logs. Authentication
+supports a configurable header/scheme (for example, Authorization/Bearer or an
+API-key header with an empty scheme). HTTPS is required except for loopback tests;
+redirects are rejected to prevent credential forwarding. Remote bodies and transport
+error strings are excluded from public error messages.
+
+The following is this project's example schema, not any company's SFCS API:
+
+```http
+GET /api/units/DEMO-SERVER-001
+Authorization: Bearer <environment-supplied-token>
+```
+
+```json
+{"serial_number":"DEMO-SERVER-001","part_number":"DEMO-PN-001","stage":"SAT","status":"READY","stations":["SAT-DIMM-01"]}
+```
+
+```http
+POST /api/station-validation
+Content-Type: application/json
+
+{"serial_number":"DEMO-SERVER-001","station":"SAT-DIMM-01"}
+```
+
+```json
+{"eligible":true,"reason":"ready"}
+```
+
+```http
+POST /api/results
+Content-Type: application/json
+Idempotency-Key: <run_id>
+```
+
+The request body is the full stored result, illustrated here with abbreviated evidence:
+
+```json
+{
+  "schema_version":1,
+  "run_id":"00000000-0000-4000-8000-000000000001",
+  "server_sn":"DEMO-SERVER-001",
+  "server_pn":"DEMO-PN-001",
+  "test_stage":"SAT",
+  "station":"SAT-DIMM-01",
+  "test_name":"DIMM_HEALTH_VALIDATION",
+  "test_version":"1.0.0",
+  "started_at":"2026-11-09T12:00:00+00:00",
+  "timestamp":"2026-11-09T12:00:01+00:00",
+  "execution_type":"INITIAL",
+  "retest_of":null,
+  "result":"PASS",
+  "diagnostic_result":"PASS",
+  "failure_information":[],
+  "dimm_health":{"overall_result":"PASS"}
+}
+```
+
+Successful uploads must return a matching acknowledgement:
+
+```json
+{"accepted":true,"run_id":"00000000-0000-4000-8000-000000000001"}
+```
+
+`GET /api/units/DEMO-SERVER-001/history` returns an array of full result objects.
+HTTP 408, 429, 5xx and connection/timeouts are retryable; other HTTP failures
+are permanent, with 409 treated as an ID conflict. Invalid JSON, response shapes
+or acknowledgements are rejected. An ambiguous timeout can occur after the server
+has accepted a result: **the receiving service must enforce Run ID idempotency**,
+return the same successful acknowledgement for identical submissions and reject
+changed payloads. The client alone cannot guarantee exactly-once remote storage.
+Retries use configured backoff; Retry-After negotiation is a future extension.
+
+### Verification and future integrations
+
+Run `python -m pytest -q`. Manufacturing tests cover successful/failing diagnostics,
+WARNING/UNKNOWN acceptance, stage/station gates, connection failures, local persistence,
+restart recovery, duplicate/conflicting submissions, multiple retests, REST authentication,
+timeouts, HTTP errors and malformed responses. REST tests use only loopback HTTP servers.
+See `VALIDATION.md` for the current verification record.
+
+Potential extensions include `FileSFCSAdapter` for JSON/CSV exchange, service-specific
+request/response mapping, remote retest-parent import, OAuth credential providers,
+operator-authorized rejected-result reconciliation, and scheduled outbox workers.
+Real factory routing, retention and authorization policies require an explicitly
+agreed external service contract and validation in its authorized test environment.
